@@ -1,0 +1,19 @@
+services:
+  rn-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: swifty-proteins
+    env_file:
+      - ./proteins/.env       # dev environment
+    volumes:
+      - ./proteins:/app       # mount project
+      - /app/node_modules      # cache node_modules
+      - ./proteins/.env:/app/.env
+    ports:
+      - "19000:19000"
+      - "19001:19001"
+      - "19002:19002"
+      - "8081:8081"
+    stdin_open: true
+    tty: true
