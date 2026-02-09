@@ -28,7 +28,7 @@ export default function AppNavigator() {
           <Stack.Screen name="Auth" component={AuthScreen} />
         ) : (
           <>
-            <Stack.Screen name="Home" component={LoginScreen} />
+            <Stack.Screen name="Home" component={ProteinListScreen} />
             <Stack.Screen name="ProteinList" component={ProteinListScreen} />
             <Stack.Screen name="ProteinViewer" component={ProteinViewerScreen} />
           </>

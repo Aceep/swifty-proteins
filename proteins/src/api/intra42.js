@@ -21,7 +21,7 @@ async function getAccessToken() {
   }
 
   try {
-    console.log('🔑 [intra42] Requesting new access token...');
+    console.log('[intra42] Requesting new access token...');
     const response = await axios.post('https://api.intra.42.fr/oauth/token', {
       grant_type: 'client_credentials',
       client_id: API_UID,
@@ -32,10 +32,10 @@ async function getAccessToken() {
     // Set expiry to 1 hour (3600 seconds) minus 5 minutes buffer
     tokenExpiry = Date.now() + (response.data.expires_in - 300) * 1000;
     
-    console.log('✅ [intra42] Access token obtained');
+    console.log('[intra42] Access token obtained');
     return accessToken;
   } catch (error) {
-    console.error('❌ [intra42] Failed to get access token:', error.response?.data || error.message);
+    console.error('[intra42] Failed to get access token:', error.response?.data || error.message);
     const apiError = new Error('Failed to authenticate with 42 API');
     apiError.type = ErrorTypes.AUTH_ERROR;
     throw apiError;
@@ -45,7 +45,7 @@ async function getAccessToken() {
 // Get user data from 42 API
 export async function getUser(login) {
   try {
-    console.log(`🔍 [intra42] Fetching user: ${login}`);
+    console.log(`[intra42] Fetching user: ${login}`);
     const token = await getAccessToken();
     
     const response = await axios.get(`https://api.intra.42.fr/v2/users/${login}`, {
@@ -54,10 +54,10 @@ export async function getUser(login) {
       },
     });
 
-    console.log('✅ [intra42] User data retrieved:', response.data.login);
+    console.log('[intra42] User data retrieved:', response.data.login);
     return response.data;
   } catch (error) {
-    console.error('❌ [intra42] Error fetching user:', error.response?.status, error.response?.data);
+    console.error('[intra42] Error fetching user:', error.response?.status, error.response?.data);
     
     // Handle different error types
     if (!error.response) {

@@ -8,17 +8,23 @@ export const AuthProvider = ({ children }) => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [justLoggedOut, setJustLoggedOut] = useState(false);
+  const [needsReauth, setNeedsReauth] = useState(false);
   const appState = React.useRef(AppState.currentState);
 
   // Monitor app state changes
   useEffect(() => {
     const handleAppStateChange = (nextAppState) => {
-      console.log('📱 [AuthContext] App state changed from:', appState.current, 'to:', nextAppState);
+      console.log('[AuthContext] App state changed from:', appState.current, 'to:', nextAppState);
       
       if (appState.current === 'background' && nextAppState === 'active') {
-        console.log('🔒 [AuthContext] App came from background, prompting for authentication');
-        setIsAuthenticated(false);
-        setJustLoggedOut(false);
+        // Only force re-auth if the user was actually authenticated before backgrounding.
+        // This prevents loops where the biometric prompt/background transition retriggers the auth screen.
+        if (isAuthenticated) {
+          console.log('[AuthContext] App came from background, requiring re-authentication');
+          setIsAuthenticated(false);
+          setNeedsReauth(true);
+          setJustLoggedOut(false);
+        }
       }
       
       appState.current = nextAppState;
@@ -41,19 +47,22 @@ export const AuthProvider = ({ children }) => {
     setIsLoading(false);
     // User must authenticate each time
     setIsAuthenticated(false);
+    setNeedsReauth(false);
   };
 
   const login = () => {
-    console.log('🔑 [AuthContext] Login called, setting isAuthenticated to true');
+    console.log('[AuthContext] Login called, setting isAuthenticated to true');
     setIsAuthenticated(true);
     setJustLoggedOut(false);
+    setNeedsReauth(false);
   };
 
   const logout = () => {
-    console.log('🚪 [AuthContext] Logout called, setting isAuthenticated to false');
+    console.log('[AuthContext] Logout called, setting isAuthenticated to false');
     // Just log out, don't delete credentials so user can log back in
     setIsAuthenticated(false);
     setJustLoggedOut(true); // Mark that this was a manual logout
+    setNeedsReauth(false);
   };
 
   return (
@@ -62,6 +71,7 @@ export const AuthProvider = ({ children }) => {
         isAuthenticated,
         isLoading,
         justLoggedOut,
+        needsReauth,
         login,
         logout,
       }}

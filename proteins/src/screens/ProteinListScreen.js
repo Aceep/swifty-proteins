@@ -12,9 +12,11 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
 import ligands from '../data/ligands';
+import { useAuth } from '../context/AuthContext';
 
 export default function ProteinListScreen({ navigation }) {
   const [searchQuery, setSearchQuery] = useState('');
+  const { logout } = useAuth();
   const [filteredLigands, setFilteredLigands] = useState(ligands);
   const [loading, setLoading] = useState(false);
 
@@ -46,7 +48,7 @@ export default function ProteinListScreen({ navigation }) {
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-            <MaterialIcons name="arrow-back" size={24} color="#fff" />
+            <MaterialIcons name="arrow-back" size={24} color="#fff" onPress={logout} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Ligands</Text>
           <View style={styles.placeholder} />
