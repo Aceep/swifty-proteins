@@ -43,7 +43,8 @@ download() {
 
   echo "Downloading $url -> $out"
   # -f fail on server errors, -L follow redirects, -sS keep errors visible
-  if ! curl -fLsS "$url" -o "$out"; then
+  # Force HTTP/1.1 to avoid occasional HTTP/2 PROTOCOL_ERROR in some environments.
+  if ! curl --http1.1 -fLsS "$url" -o "$out"; then
     echo "Failed to download $url" >&2
     return 1
   fi

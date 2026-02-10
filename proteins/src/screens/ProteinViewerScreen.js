@@ -14,9 +14,11 @@ import {
 import { WebView } from 'react-native-webview';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
+import { fetchMoleculeData as fetchMoleculeDataApi } from '../api/api';
 
 export default function ProteinViewerScreen({ route, navigation }) {
-  const { ligandId } = route?.params || { ligandId: '001' };
+  const params = route?.params || {};
+  const structureId = params.structureId || params.pdbId || params.ligandId || null;
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [selectedAtom, setSelectedAtom] = useState(null);
@@ -24,58 +26,22 @@ export default function ProteinViewerScreen({ route, navigation }) {
   const [moleculeData, setMoleculeData] = useState(null);
 
   useEffect(() => {
-    console.log('ProteinViewerScreen mounted with ligandId:', ligandId);
+    console.log('ProteinViewerScreen mounted with structureId:', structureId);
     fetchMoleculeData();
-  }, [ligandId]);
+  }, [structureId]);
 
   const fetchMoleculeData = async () => {
     try {
       setLoading(true);
       setError(false);
       
-      console.log('Fetching ligand data for:', ligandId);
-      
-      // Try multiple RCSB endpoints
-      const urls = [
-        `https://files.rcsb.org/ligands/view/${ligandId}.pdb`,
-        `https://files.rcsb.org/ligands/view/${ligandId}.sdf`,
-        `https://files.rcsb.org/ligands/download/${ligandId}.pdb`,
-        `https://files.rcsb.org/ligands/download/${ligandId}.sdf`,
-      ];
-      
-      let data = null;
-      let format = null;
-      
-      for (const url of urls) {
-        try {
-          console.log('Trying URL:', url);
-          const response = await fetch(url);
-          
-          if (response.ok) {
-            data = await response.text();
-            format = url.endsWith('.pdb') ? 'pdb' : 'sdf';
-            console.log(`Successfully fetched ${format} data, length:`, data.length);
-            break;
-          } else {
-            console.log('Response not OK:', response.status);
-          }
-        } catch (fetchError) {
-          console.log('Fetch error:', fetchError.message);
-        }
-      }
-      
-      if (data && format) {
-        setMoleculeData({ data, format });
-        setLoading(false);
-      } else {
-        // Use demo molecule if fetch fails
-        console.log('Using demo molecule');
-        setMoleculeData({ data: 'DEMO', format: 'demo' });
-        setLoading(false);
-      }
-    } catch (err) {
-      console.error('Error fetching molecule:', err);
+      const data = await fetchMoleculeDataApi(structureId);
+      setMoleculeData(data);
+      console.log('Molecule data fetched successfully for structureId:', structureId);
+    } catch (error) {
+      console.error('Error fetching molecule data for structureId:', structureId, error);
       setError(true);
+    } finally {
       setLoading(false);
     }
   };
@@ -321,7 +287,7 @@ export default function ProteinViewerScreen({ route, navigation }) {
         logMessage('Load error: ' + error.message);
         window.ReactNativeWebView.postMessage(JSON.stringify({ 
           type: 'error',
-          message: error.message || 'Failed to load ligand'
+          message: error.message || 'Failed to load structure'
         }));
       }
     }
@@ -557,7 +523,7 @@ export default function ProteinViewerScreen({ route, navigation }) {
 
   const htmlContent = useMemo(() => {
     return moleculeData ? getHtmlContent() : '';
-  }, [moleculeData, ligandId]);
+  }, [moleculeData, structureId]);
 
   const handleWebViewMessage = (event) => {
     try {
@@ -572,7 +538,7 @@ export default function ProteinViewerScreen({ route, navigation }) {
         console.error('WebView error:', data.message);
         setLoading(false);
         setError(true);
-        Alert.alert('Error', `Failed to load ligand: ${data.message}`);
+        Alert.alert('Error', `Failed to load structure: ${data.message}`);
       } else if (data.type === 'atomClicked') {
         setSelectedAtom(data.atom);
         setShowTooltip(true);
@@ -587,8 +553,8 @@ export default function ProteinViewerScreen({ route, navigation }) {
   const handleShare = async () => {
     try {
       await Share.share({
-        message: `Check out this 3D molecular structure of ligand ${ligandId}!`,
-        title: `Ligand ${ligandId}`,
+        message: `Check out this 3D molecular structure of structure ${structureId}!`,
+        title: `Structure ${structureId}`,
       });
     } catch (error) {
       Alert.alert('Error', 'Failed to share the model');
@@ -620,13 +586,13 @@ export default function ProteinViewerScreen({ route, navigation }) {
             <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
               <MaterialIcons name="arrow-back" size={24} color="#fff" />
             </TouchableOpacity>
-            <Text style={styles.headerTitle}>Ligand {ligandId}</Text>
+            <Text style={styles.headerTitle}>Structure {structureId}</Text>
             <View style={styles.placeholder} />
           </View>
           <View style={styles.errorContainer}>
             <MaterialIcons name="error-outline" size={80} color="#EF4444" />
-            <Text style={styles.errorText}>Failed to load ligand</Text>
-            <Text style={styles.errorSubtext}>This ligand may not be available</Text>
+            <Text style={styles.errorText}>Failed to load structure</Text>
+            <Text style={styles.errorSubtext}>This structure may not be available</Text>
             <TouchableOpacity style={styles.retryButton} onPress={() => navigation.goBack()}>
               <Text style={styles.retryButtonText}>Go Back</Text>
             </TouchableOpacity>
@@ -643,7 +609,7 @@ export default function ProteinViewerScreen({ route, navigation }) {
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
             <MaterialIcons name="arrow-back" size={24} color="#fff" />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Ligand {ligandId}</Text>
+          <Text style={styles.headerTitle}>Structure {structureId}</Text>
           <TouchableOpacity onPress={handleShare} style={styles.shareButton}>
             <MaterialIcons name="share" size={24} color="#fff" />
           </TouchableOpacity>
@@ -652,7 +618,7 @@ export default function ProteinViewerScreen({ route, navigation }) {
         {moleculeData && (
           <View style={styles.webviewContainer}>
             <WebView
-              key={`webview-${ligandId}`}
+              key={`webview-${structureId}`}
               source={{ html: htmlContent }}
               style={styles.webview}
               onMessage={handleWebViewMessage}
@@ -667,7 +633,7 @@ export default function ProteinViewerScreen({ route, navigation }) {
                 console.error('WebView HTTP error:', nativeEvent);
               }}
               onLoad={() => {
-                console.log('WebView loaded successfully for ligand:', ligandId);
+                console.log('WebView loaded successfully for structure:', structureId);
               }}
               javaScriptEnabled={true}
               domStorageEnabled={true}

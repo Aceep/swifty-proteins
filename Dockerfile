@@ -9,6 +9,7 @@ RUN apt-get update && apt-get install -y \
     watchman \
     git \
     curl \
+    rsync \
     && rm -rf /var/lib/apt/lists/*
 
 RUN npm install -g expo-cli
