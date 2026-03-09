@@ -1,50 +1,60 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  Alert,
-  ActivityIndicator,
-  Modal,
-  Share,
-  SafeAreaView,
-  Platform,
-} from 'react-native';
+import React, { useRef, useState, useEffect, useMemo } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Alert, ActivityIndicator, Modal, Share, SafeAreaView, Platform } from 'react-native';
 import { WebView } from 'react-native-webview';
+import ViewShot from 'react-native-view-shot';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
-import { fetchMoleculeData as fetchMoleculeDataApi } from '../api/api';
+import { fetchMoleculeData } from '../api/api';
+import { useFavorites } from '../context/FavoritesContext';
+import ligands from '../data/ligands';
 
 export default function ProteinViewerScreen({ route, navigation }) {
-  const params = route?.params || {};
-  const structureId = params.structureId || params.pdbId || params.ligandId || null;
+  const structureId = (route?.params?.structureId || route?.params?.pdbId || route?.params?.ligandId || '').toUpperCase();
+
+  const ligandShotRef = useRef(null);
+
+  const safeBack = () => {
+    if (navigation.canGoBack()) navigation.goBack();
+    else navigation.navigate('Home');
+  };
+
+  const { isFavorite, toggleFavorite } = useFavorites();
+  const favorite = isFavorite(structureId);
+  const canFavorite = /^[A-Z0-9]{3}$/.test(structureId) && ligands.includes(structureId);
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const [moleculeData, setMoleculeData] = useState(null);
   const [selectedAtom, setSelectedAtom] = useState(null);
   const [showTooltip, setShowTooltip] = useState(false);
-  const [moleculeData, setMoleculeData] = useState(null);
 
   useEffect(() => {
-    console.log('ProteinViewerScreen mounted with structureId:', structureId);
-    fetchMoleculeData();
-  }, [structureId]);
+    if (!structureId) return;
 
-  const fetchMoleculeData = async () => {
-    try {
-      setLoading(true);
-      setError(false);
-      
-      const data = await fetchMoleculeDataApi(structureId);
-      setMoleculeData(data);
-      console.log('Molecule data fetched successfully for structureId:', structureId);
-    } catch (error) {
-      console.error('Error fetching molecule data for structureId:', structureId, error);
-      setError(true);
-    } finally {
-      setLoading(false);
-    }
-  };
+    const loadData = async () => {
+      try {
+        setLoading(true);
+        setError(false);
+
+        const molecule = await fetchMoleculeData(structureId);
+        console.log('Loaded molecule:', {
+          id: structureId,
+          format: molecule?.format,
+          dataType: typeof molecule?.data,
+          dataSize: typeof molecule?.data === 'string' ? molecule.data.length : undefined,
+        });
+        setMoleculeData(molecule);
+      } catch (err) {
+        console.error(err);
+        Alert.alert('Warning', 'Unable to load this ligand from the website.');
+        setError(true);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadData();
+  }, [structureId]);
 
   // CPK color scheme for atoms
   const cpkColors = {
@@ -267,30 +277,56 @@ export default function ProteinViewerScreen({ route, navigation }) {
       });
     }
 
-    async function loadLigand() {
-      try {
-        logMessage('Starting to load ligand with format: ' + MOLECULE_FORMAT);
-        
-        if (MOLECULE_FORMAT === 'demo') {
-          createDemoMolecule();
-        } else if (MOLECULE_FORMAT === 'pdb') {
-          parsePDB(MOLECULE_DATA);
-        } else if (MOLECULE_FORMAT === 'sdf') {
-          parseSDF(MOLECULE_DATA);
-        } else {
-          throw new Error('Unknown format: ' + MOLECULE_FORMAT);
-        }
-        
-        document.getElementById('loading').style.display = 'none';
-        window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'loaded' }));
-      } catch (error) {
-        logMessage('Load error: ' + error.message);
-        window.ReactNativeWebView.postMessage(JSON.stringify({ 
-          type: 'error',
-          message: error.message || 'Failed to load structure'
-        }));
-      }
+function loadLigand() {
+  try {
+    logMessage('Starting to load ligand with format: ' + MOLECULE_FORMAT);
+
+    if (MOLECULE_FORMAT === 'demo') {
+      createDemoMolecule();
     }
+
+    else if (MOLECULE_FORMAT === 'pdb') {
+      parsePDB(MOLECULE_DATA);
+    }
+
+    else if (MOLECULE_FORMAT === 'sdf') {
+      parseSDF(MOLECULE_DATA);
+    }
+
+    else if (MOLECULE_FORMAT === 'ligand') {
+      // Already parsed array of atoms
+      if (!Array.isArray(MOLECULE_DATA)) {
+        throw new Error('Ligand data is not an array');
+      }
+
+      MOLECULE_DATA.forEach(atom => {
+        createAtom(atom.x, atom.y, atom.z, atom.element);
+      });
+
+      createBondsByDistance(MOLECULE_DATA);
+      centerMolecule();
+    }
+
+    else {
+      throw new Error('Unknown format: ' + MOLECULE_FORMAT);
+    }
+
+    document.getElementById('loading').style.display = 'none';
+
+    window.ReactNativeWebView.postMessage(JSON.stringify({
+      type: 'loaded'
+    }));
+
+  } catch (error) {
+    logMessage('Load error: ' + error.message);
+
+    window.ReactNativeWebView.postMessage(JSON.stringify({
+      type: 'error',
+      message: error.message
+    }));
+  }
+}
+
 
     function createDemoMolecule() {
       // Create a simple water molecule (H2O) as demo
@@ -552,10 +588,20 @@ export default function ProteinViewerScreen({ route, navigation }) {
 
   const handleShare = async () => {
     try {
-      await Share.share({
-        message: `Check out this 3D molecular structure of structure ${structureId}!`,
+      let screenshotUri;
+      try {
+        screenshotUri = await ligandShotRef.current?.capture?.();
+      } catch (e) {
+        screenshotUri = undefined;
+      }
+
+      const payload = {
+        message: `Check out this 3D molecular structure of ${structureId}!`,
         title: `Structure ${structureId}`,
-      });
+      };
+      if (screenshotUri) payload.url = screenshotUri;
+
+      await Share.share(payload);
     } catch (error) {
       Alert.alert('Error', 'Failed to share the model');
     }
@@ -583,7 +629,7 @@ export default function ProteinViewerScreen({ route, navigation }) {
       <LinearGradient colors={['#1a1a2e', '#16213e', '#0f3460']} style={styles.gradient}>
         <SafeAreaView style={styles.safeArea}>
           <View style={styles.header}>
-            <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+            <TouchableOpacity onPress={safeBack} style={styles.backButton}>
               <MaterialIcons name="arrow-back" size={24} color="#fff" />
             </TouchableOpacity>
             <Text style={styles.headerTitle}>Structure {structureId}</Text>
@@ -593,7 +639,7 @@ export default function ProteinViewerScreen({ route, navigation }) {
             <MaterialIcons name="error-outline" size={80} color="#EF4444" />
             <Text style={styles.errorText}>Failed to load structure</Text>
             <Text style={styles.errorSubtext}>This structure may not be available</Text>
-            <TouchableOpacity style={styles.retryButton} onPress={() => navigation.goBack()}>
+            <TouchableOpacity style={styles.retryButton} onPress={safeBack}>
               <Text style={styles.retryButtonText}>Go Back</Text>
             </TouchableOpacity>
           </View>
@@ -606,43 +652,62 @@ export default function ProteinViewerScreen({ route, navigation }) {
     <LinearGradient colors={['#1a1a2e', '#16213e', '#0f3460']} style={styles.gradient}>
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+          <TouchableOpacity onPress={safeBack} style={styles.backButton}>
             <MaterialIcons name="arrow-back" size={24} color="#fff" />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Structure {structureId}</Text>
-          <TouchableOpacity onPress={handleShare} style={styles.shareButton}>
-            <MaterialIcons name="share" size={24} color="#fff" />
-          </TouchableOpacity>
+          <View style={styles.headerActions}>
+            {canFavorite && (
+              <TouchableOpacity
+                onPress={() => toggleFavorite(structureId)}
+                style={styles.actionButton}
+                accessibilityRole="button"
+                accessibilityLabel={favorite ? 'Remove from favorites' : 'Add to favorites'}
+              >
+                <MaterialIcons name={favorite ? 'favorite' : 'favorite-border'} size={24} color="#fff" />
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity onPress={handleShare} style={[styles.actionButton, styles.actionButtonRight]}>
+              <MaterialIcons name="share" size={24} color="#fff" />
+            </TouchableOpacity>
+          </View>
         </View>
 
         {moleculeData && (
           <View style={styles.webviewContainer}>
-            <WebView
-              key={`webview-${structureId}`}
-              source={{ html: htmlContent }}
-              style={styles.webview}
-              onMessage={handleWebViewMessage}
-              onError={(syntheticEvent) => {
-                const { nativeEvent } = syntheticEvent;
-                console.error('WebView error:', nativeEvent);
-                setError(true);
-                setLoading(false);
-              }}
-              onHttpError={(syntheticEvent) => {
-                const { nativeEvent } = syntheticEvent;
-                console.error('WebView HTTP error:', nativeEvent);
-              }}
-              onLoad={() => {
-                console.log('WebView loaded successfully for structure:', structureId);
-              }}
-              javaScriptEnabled={true}
-              domStorageEnabled={true}
-              allowFileAccess={true}
-              allowUniversalAccessFromFileURLs={true}
-              mixedContentMode="always"
-              originWhitelist={['*']}
-              startInLoadingState={false}
-            />
+            <ViewShot
+              ref={ligandShotRef}
+              style={styles.webviewShot}
+              options={{ format: 'png', quality: 0.9, result: 'tmpfile' }}
+            >
+              <WebView
+                key={`webview-${structureId}`}
+                source={{ html: htmlContent }}
+                style={styles.webview}
+                onMessage={handleWebViewMessage}
+                onError={(syntheticEvent) => {
+                  const { nativeEvent } = syntheticEvent;
+                  console.error('WebView error:', nativeEvent);
+                  setError(true);
+                  setLoading(false);
+                }}
+                onHttpError={(syntheticEvent) => {
+                  const { nativeEvent } = syntheticEvent;
+                  console.error('WebView HTTP error:', nativeEvent);
+                }}
+                onLoad={() => {
+                  console.log('WebView loaded successfully for structure:', structureId);
+                }}
+                javaScriptEnabled={true}
+                domStorageEnabled={true}
+                allowFileAccess={true}
+                allowUniversalAccessFromFileURLs={true}
+                mixedContentMode="always"
+                originWhitelist={['*']}
+                startInLoadingState={false}
+                {...(Platform.OS === 'android' ? { androidLayerType: 'software' } : {})}
+              />
+            </ViewShot>
           </View>
         )}
 
@@ -717,22 +782,31 @@ const styles = StyleSheet.create({
     backgroundColor: '#16213e',
     borderRadius: 8,
   },
-  shareButton: {
-    padding: 8,
-    backgroundColor: '#16213e',
-    borderRadius: 8,
-  },
   headerTitle: {
     fontSize: 20,
     color: '#00babc',
     fontWeight: 'bold',
+    flex: 1,
+    textAlign: 'center',
   },
-  placeholder: {
-    width: 40,
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  actionButton: {
+    padding: 8,
+    backgroundColor: '#16213e',
+    borderRadius: 8,
+  },
+  actionButtonRight: {
+    marginLeft: 8,
   },
   webviewContainer: {
     flex: 1,
     backgroundColor: '#0f3460',
+  },
+  webviewShot: {
+    flex: 1,
   },
   webview: {
     flex: 1,

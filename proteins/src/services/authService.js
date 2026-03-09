@@ -3,11 +3,43 @@ import * as SecureStore from 'expo-secure-store';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 
-const USER_CREDENTIALS_KEY = 'user_credentials';
+const USERS_KEY = 'users';
+const LAST_USER_KEY = 'last_user';
 const BIOMETRIC_ENABLED_KEY = 'biometric_enabled';
 
 // SecureStore is not available on web, use AsyncStorage as fallback
 const isWeb = Platform.OS === 'web';
+
+const storageGetItem = async (key) => {
+  if (isWeb) return AsyncStorage.getItem(key);
+  return SecureStore.getItemAsync(key);
+};
+
+const storageSetItem = async (key, value) => {
+  if (isWeb) return AsyncStorage.setItem(key, value);
+  return SecureStore.setItemAsync(key, value);
+};
+
+const storageRemoveItem = async (key) => {
+  if (isWeb) return AsyncStorage.removeItem(key);
+  return SecureStore.deleteItemAsync(key);
+};
+
+const normalizeUsernameKey = (username) => String(username || '').trim().toLowerCase();
+
+const readUsers = async () => {
+  try {
+    const raw = await storageGetItem(USERS_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch (e) {
+    return {};
+  }
+};
+
+const writeUsers = async (users) => {
+  await storageSetItem(USERS_KEY, JSON.stringify(users));
+};
 
 export const AuthService = {
   // Check if device supports biometric authentication
@@ -53,16 +85,23 @@ export const AuthService = {
     }
   },
 
-  // Save user credentials securely
+  // Save user credentials securely (supports multiple local accounts)
   async saveCredentials(username, password) {
     try {
-      const credentials = JSON.stringify({ username, password });
-      if (isWeb) {
-        // Use AsyncStorage on web as SecureStore is not available
-        await AsyncStorage.setItem(USER_CREDENTIALS_KEY, credentials);
-      } else {
-        await SecureStore.setItemAsync(USER_CREDENTIALS_KEY, credentials);
+      const cleanUsername = String(username || '').trim();
+      const cleanPassword = String(password || '');
+      if (!cleanUsername || !cleanPassword) return false;
+
+      const key = normalizeUsernameKey(cleanUsername);
+      const users = await readUsers();
+      if (users[key]) {
+        // Username already exists
+        return false;
       }
+
+      users[key] = { username: cleanUsername, password: cleanPassword };
+      await writeUsers(users);
+      await storageSetItem(LAST_USER_KEY, cleanUsername);
       return true;
     } catch (error) {
       console.error('Error saving credentials:', error);
@@ -70,16 +109,15 @@ export const AuthService = {
     }
   },
 
-  // Get saved credentials
+  // Get saved credentials for the last logged-in user (backward-compatible)
   async getCredentials() {
     try {
-      let credentials;
-      if (isWeb) {
-        credentials = await AsyncStorage.getItem(USER_CREDENTIALS_KEY);
-      } else {
-        credentials = await SecureStore.getItemAsync(USER_CREDENTIALS_KEY);
-      }
-      return credentials ? JSON.parse(credentials) : null;
+      const lastUser = await this.getUsername();
+      if (!lastUser) return null;
+
+      const users = await readUsers();
+      const entry = users[normalizeUsernameKey(lastUser)];
+      return entry ? { username: entry.username, password: entry.password } : null;
     } catch (error) {
       console.error('Error retrieving credentials:', error);
       return null;
@@ -88,21 +126,34 @@ export const AuthService = {
 
   // Check if user exists
   async userExists() {
-    const credentials = await this.getCredentials();
-    return credentials !== null;
+    const users = await readUsers();
+    return Object.keys(users).length > 0;
   },
 
   // Get username
   async getUsername() {
-    const credentials = await this.getCredentials();
-    return credentials ? credentials.username : null;
+    try {
+      const last = await storageGetItem(LAST_USER_KEY);
+      return last ? String(last) : null;
+    } catch (e) {
+      return null;
+    }
   },
 
   // Verify password
-  async verifyPassword(password) {
-    const credentials = await this.getCredentials();
-    if (!credentials) return false;
-    return credentials.password === password;
+  async verifyPassword(password, username) {
+    const cleanUsername = String(username || '').trim();
+    if (!cleanUsername) return false;
+
+    const users = await readUsers();
+    const entry = users[normalizeUsernameKey(cleanUsername)];
+    if (!entry) return false;
+    const ok = entry.password === String(password || '');
+    if (ok) {
+      // Keep track of the last successful user for biometric/reconnect flow
+      await storageSetItem(LAST_USER_KEY, entry.username);
+    }
+    return ok;
   },
 
   // Enable/disable biometric authentication
@@ -128,11 +179,8 @@ export const AuthService = {
   // Delete credentials (logout)
   async deleteCredentials() {
     try {
-      if (isWeb) {
-        await AsyncStorage.removeItem(USER_CREDENTIALS_KEY);
-      } else {
-        await SecureStore.deleteItemAsync(USER_CREDENTIALS_KEY);
-      }
+      await storageRemoveItem(USERS_KEY);
+      await storageRemoveItem(LAST_USER_KEY);
       await AsyncStorage.removeItem(BIOMETRIC_ENABLED_KEY);
       return true;
     } catch (error) {

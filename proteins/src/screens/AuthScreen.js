@@ -52,7 +52,7 @@ export default function AuthScreen() {
             <View style={styles.card}>
               <View style={styles.header}>
                 <MaterialIcons name="security" size={64} color="#00babc" />
-                <Text style={styles.title}>Swifty Companion</Text>
+                <Text style={styles.title}>Swifty Proteins</Text>
                 <Text style={styles.subtitle}>Welcome! Please choose an option</Text>
               </View>
 

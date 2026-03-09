@@ -65,20 +65,20 @@ export default function RegisterScreen({ setMode }) {
               text: 'No',
               onPress: async () => {
                 await AuthService.setBiometricEnabled(false);
-                login();
+                login(username.trim());
               },
             },
             {
               text: 'Yes',
               onPress: async () => {
                 await AuthService.setBiometricEnabled(true);
-                login();
+                login(username.trim());
               },
             },
           ]
         );
       } else {
-        login();
+        login(username.trim());
       }
     } catch (error) {
       Alert.alert('Error', 'Failed to create account');
@@ -105,7 +105,7 @@ export default function RegisterScreen({ setMode }) {
               <View style={styles.header}>
                 <MaterialIcons name="person-add" size={64} color="#00babc" />
                 <Text style={styles.title}>Create Account</Text>
-                <Text style={styles.subtitle}>Register to access Swifty Companion</Text>
+                <Text style={styles.subtitle}>Register to access Swifty Proteins</Text>
               </View>
 
               {/* Username field */}

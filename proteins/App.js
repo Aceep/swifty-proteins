@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { View } from 'react-native';
 import * as SplashScreen from 'expo-splash-screen';
 import { AuthProvider } from './src/context/AuthContext';
+import { FavoritesProvider } from './src/context/FavoritesContext';
 import AppNavigator from './src/navigation/AppNavigator';
 import SplashScreenComponent from './src/screens/SplashScreen';
 
@@ -34,7 +35,9 @@ export default function App() {
 
   return (
     <AuthProvider>
-      <AppNavigator />
+      <FavoritesProvider>
+        <AppNavigator />
+      </FavoritesProvider>
     </AuthProvider>
   );
 }

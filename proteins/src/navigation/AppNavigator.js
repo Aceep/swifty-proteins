@@ -6,6 +6,7 @@ import AuthScreen from '../screens/AuthScreen';
 import LoginScreen from '../screens/LoginScreen';
 import ProteinListScreen from '../screens/ProteinListScreen';
 import ProteinViewerScreen from '../screens/ProteinViewerScreen';
+import FavoritesScreen from '../screens/FavoritesScreen';
 import { ActivityIndicator, View, StyleSheet } from 'react-native';
 
 const Stack = createNativeStackNavigator();
@@ -31,6 +32,7 @@ export default function AppNavigator() {
             <Stack.Screen name="Home" component={ProteinListScreen} />
             <Stack.Screen name="ProteinList" component={ProteinListScreen} />
             <Stack.Screen name="ProteinViewer" component={ProteinViewerScreen} />
+            <Stack.Screen name="Favorites" component={FavoritesScreen} />
           </>
         )}
       </Stack.Navigator>

@@ -16,6 +16,7 @@ RUN npm install -g expo-cli
 
 # Copy package files and install dependencies
 COPY proteins/package*.json ./
+RUN apt update
 RUN npm install
 
 # Copy the rest of the application code

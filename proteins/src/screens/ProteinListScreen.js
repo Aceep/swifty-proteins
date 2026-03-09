@@ -47,11 +47,16 @@ export default function ProteinListScreen({ navigation }) {
     <LinearGradient colors={['#1a1a2e', '#16213e', '#0f3460']} style={styles.gradient}>
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-            <MaterialIcons name="arrow-back" size={24} color="#fff" onPress={logout} />
+          <TouchableOpacity onPress={logout} style={styles.backButton}>
+            <MaterialIcons name="logout" size={24} color="#fff" />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Ligands</Text>
-          <View style={styles.placeholder} />
+          <TouchableOpacity
+            onPress={() => navigation.navigate('Favorites')}
+            style={styles.favoritesButton}
+          >
+            <MaterialIcons name="favorite" size={24} color="#fff" />
+          </TouchableOpacity>
         </View>
 
         <View style={styles.container}>
@@ -102,6 +107,11 @@ const styles = StyleSheet.create({
   },
   placeholder: {
     width: 40,
+  },
+  favoritesButton: {
+    padding: 8,
+    backgroundColor: '#16213e',
+    borderRadius: 8,
   },
   container: {
     flex: 1,
