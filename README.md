@@ -8,7 +8,6 @@ It lets users browse ligands from the provided list, view them in 3D, authentica
 - `proteins/`: the Expo app (source, assets, `package.json`)
 - `docker-compose.yml`, `Dockerfile`: Dockerized dev environment for running Expo
 - `start.sh`: helper script to build/run the container and start Expo
-- `rcsb_download.sh`: helper script used for fetching RCSB resources (if needed)
 
 ## Run with Docker (recommended)
 
