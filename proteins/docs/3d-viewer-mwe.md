@@ -227,3 +227,10 @@ How do i know which atom/bond corresponds to which line in the SDF?
 - The SDF format is standardized. The counts line (4th line) tells you how many atoms and bonds there are. The next `atomCount` lines are the atom block, and the following `bondCount` lines are the bond block. Each atom line has coordinates and element info, and each bond line has indices of the connected atoms and bond order. You can refer to the SDF specification for more details: https://en.wikipedia.org/wiki/Chemical_table_file#Structure-Data_File
 
 
+For the 2D Lewis view, how do you determine the 2D coordinates of the atoms?
+- The 2D Lewis view is generated using a different algorithm that computes 2D coordinates based on the connectivity of the atoms. It typically uses a force-directed layout or a similar method to position the atoms in a way that minimizes overlaps and reflects the structure of the molecule. The specific implementation can be complex and may involve additional libraries or custom code to achieve a clear and informative 2D representation.
+
+What librairy is used for the 2D Lewis view?
+- The 2D Lewis view in the app is generated using a custom implementation that calculates 2D coordinates for the atoms based on their connectivity. It does not rely on an external library for this purpose. The algorithm takes into account the bonds between atoms and their types to create a visually coherent 2D representation of the molecule. This allows users to toggle between the 3D viewer and the 2D Lewis view seamlessly within the app.
+
+

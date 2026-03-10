@@ -28,6 +28,7 @@ export default function LoginScreen({
   const [showPassword, setShowPassword] = useState(false);
   const [biometricSupported, setBiometricSupported] = useState(false);
   const [biometricEnabled, setBiometricEnabled] = useState(false);
+  const [storedUsername, setStoredUsername] = useState(null);
   const lastAutoBioToken = useRef(0);
 
   const isReconnect = variant === 'reconnect';
@@ -40,34 +41,48 @@ export default function LoginScreen({
 
   useEffect(() => {
     let cancelled = false;
-    (async () => {
+    const refresh = async () => {
       const supported = await AuthService.isBiometricSupported();
       const enabled = await AuthService.isBiometricEnabled();
+      const lastUser = await AuthService.getUsername();
+
       if (cancelled) return;
       setBiometricSupported(!!supported);
       setBiometricEnabled(!!enabled);
-
-      const storedUsername = await AuthService.getUsername();
-      if (!cancelled && storedUsername && !username) {
-        setUsername(storedUsername);
+      setStoredUsername(lastUser);
+      if (lastUser) {
+        setUsername((prev) => (prev ? prev : lastUser));
       }
-    })();
+    };
+
+    refresh();
     return () => {
       cancelled = true;
     };
-  }, []);
+    // Re-check on reconnect events as well; on some devices the first check after resume
+    // can transiently report unsupported/disabled if run too early.
+  }, [autoBiometricToken, isReconnect]);
+
+  const canUseBiometrics = useMemo(() => {
+    // Normal login requires the explicit opt-in flag.
+    // Reconnect-after-background should always offer biometrics when supported,
+    // otherwise users can get stuck without seeing the biometric option.
+    const allowedByPreference = biometricEnabled || isReconnect;
+    return biometricSupported && allowedByPreference && !!storedUsername;
+  }, [biometricSupported, biometricEnabled, isReconnect, storedUsername]);
 
   useEffect(() => {
     // Trigger biometric automatically when instructed (typically on app return)
     if (!isReconnect) return;
     if (!autoBiometricToken) return;
     if (autoBiometricToken === lastAutoBioToken.current) return;
-    lastAutoBioToken.current = autoBiometricToken;
 
-    if (biometricSupported && biometricEnabled) {
+    if (canUseBiometrics) {
+      // Mark the token as consumed only when we actually attempt auth.
+      lastAutoBioToken.current = autoBiometricToken;
       handleBiometricAuth(true);
     }
-  }, [autoBiometricToken, biometricSupported, biometricEnabled, isReconnect]);
+  }, [autoBiometricToken, canUseBiometrics, isReconnect]);
 
   const handleLogin = async () => {
     if (!username.trim() || !password.trim()) {
@@ -89,8 +104,8 @@ export default function LoginScreen({
     try {
       const result = await AuthService.authenticateWithBiometric();
       if (result.success) {
-        const storedUsername = await AuthService.getUsername();
-        login(storedUsername);
+        const lastUser = await AuthService.getUsername();
+        login(lastUser);
       } else if (!silent) {
         Alert.alert(
           'Authentication Failed',
@@ -122,7 +137,7 @@ export default function LoginScreen({
             <Text style={styles.subtitle}>{subtitle}</Text>
           </View>
 
-          {(biometricSupported && biometricEnabled) && (
+          {canUseBiometrics && (
             <>
               <TouchableOpacity
                 style={styles.biometricButton}
