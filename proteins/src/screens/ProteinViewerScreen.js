@@ -25,6 +25,7 @@ export default function ProteinViewerScreen({ route, navigation }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [moleculeData, setMoleculeData] = useState(null);
+  const [viewerMode, setViewerMode] = useState('3d'); // '3d' | '2d'
   const [selectedAtom, setSelectedAtom] = useState(null);
   const [showTooltip, setShowTooltip] = useState(false);
 
@@ -87,6 +88,180 @@ export default function ProteinViewerScreen({ route, navigation }) {
 
   const getHtmlContent = () => {
     if (!moleculeData) return '';
+
+    // 2D Lewis-style depiction (SVG) via RDKit.js
+    if (viewerMode === '2d') {
+      return `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background-color: #0f3460;
+      font-family: Arial, sans-serif;
+    }
+    #container {
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    #drawing {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    #drawing svg {
+      width: 100% !important;
+      height: 100% !important;
+    }
+    .hint {
+      position: absolute;
+      bottom: 12px;
+      left: 12px;
+      right: 12px;
+      color: rgba(229, 231, 235, 0.85);
+      font-size: 12px;
+      text-align: center;
+    }
+  </style>
+  <script>
+    function postMessage(payload) {
+      window.ReactNativeWebView && window.ReactNativeWebView.postMessage(JSON.stringify(payload));
+    }
+    function handleScriptError() {
+      postMessage({ type: 'error', message: 'Failed to load RDKit.js library' });
+    }
+  </script>
+  <script src="https://unpkg.com/@rdkit/rdkit/dist/RDKit_minimal.js" onerror="handleScriptError()"></script>
+</head>
+<body>
+  <div id="container">
+    <div id="drawing"></div>
+  </div>
+  <div class="hint" id="hint"></div>
+
+  <script>
+    const MOLECULE_DATA = ${JSON.stringify(moleculeData.data)};
+    const MOLECULE_FORMAT = ${JSON.stringify(moleculeData.format)};
+    const STRUCTURE_ID = ${JSON.stringify(structureId)};
+
+    function extractMolBlockFromSdf(s) {
+      const text = String(s || '');
+      // RCSB ligand downloads are typically SDF with a single record; strip anything after $$$$.
+      const idx = text.indexOf('$$$$');
+      const mol = (idx >= 0 ? text.slice(0, idx) : text).trim();
+      return mol;
+    }
+
+    function setHint(message) {
+      const el = document.getElementById('hint');
+      if (el) el.textContent = message || '';
+    }
+
+    async function renderLewis() {
+      if (MOLECULE_FORMAT !== 'sdf') {
+        setHint('This structure format cannot be depicted as a Lewis diagram here.');
+        postMessage({ type: 'loaded' });
+        return;
+      }
+
+      try {
+        if (!window.initRDKitModule) {
+          throw new Error('RDKit init function not available');
+        }
+
+        const RDKit = await window.initRDKitModule({
+          locateFile: (file) => 'https://unpkg.com/@rdkit/rdkit/dist/' + file
+        });
+
+        // Use CoordGen for better 2D layouts (fewer overlaps)
+        try {
+          RDKit.prefer_coordgen(true);
+        } catch (e) {
+          // ignore
+        }
+
+        const molBlock = extractMolBlockFromSdf(MOLECULE_DATA);
+        if (!molBlock) throw new Error('Empty molecule data');
+
+        let mol = RDKit.get_mol(molBlock);
+        if (!mol) throw new Error('RDKit could not parse molecule');
+
+        // Kekulé form tends to be closer to “Lewis-style” line structures.
+        try {
+          const kekule = mol.get_kekule_form();
+          if (kekule && typeof kekule === 'string') {
+            mol.delete && mol.delete();
+            mol = RDKit.get_mol(kekule) || RDKit.get_mol(molBlock);
+          }
+        } catch (e) {
+          // ignore
+        }
+
+        if (!mol) throw new Error('RDKit could not parse molecule');
+
+        // Force generation of 2D coordinates (avoid projecting any existing 3D coords)
+        try {
+          mol.set_new_coords(true);
+        } catch (e) {
+          try {
+            mol.set_new_coords(false);
+          } catch (e2) {
+            // ignore
+          }
+        }
+
+        // Render in Kekulé form (closer to a Lewis-style line structure). Lone pairs are not
+        // explicitly drawn by RDKit; charges/radicals are included when present.
+        const mdetails = {
+          width: Math.max(320, window.innerWidth),
+          height: Math.max(480, window.innerHeight),
+          addStereoAnnotation: true,
+          explicitMethyl: true,
+          clearBackground: false,
+          backgroundColour: [0.0588, 0.2039, 0.3765],
+          legendColour: [0.0, 0.7294, 0.7373],
+          bondLineWidth: 2,
+          padding: 0.1,
+          rotate: 0,
+          includeRadicals: true
+        };
+
+        const svg = mol.get_svg_with_highlights(JSON.stringify(mdetails));
+        const dest = document.getElementById('drawing');
+        dest.innerHTML = svg;
+
+        // Ensure the SVG fills the viewport
+        const svgEl = dest.querySelector('svg');
+        if (svgEl) {
+          svgEl.setAttribute('width', '100%');
+          svgEl.setAttribute('height', '100%');
+          svgEl.style.maxWidth = '100%';
+          svgEl.style.maxHeight = '100%';
+        }
+
+        mol.delete && mol.delete();
+        postMessage({ type: 'loaded' });
+      } catch (err) {
+        setHint('Failed to render Lewis structure.');
+        postMessage({ type: 'error', message: String(err && err.message ? err.message : err) });
+      }
+    }
+
+    renderLewis();
+  </script>
+</body>
+</html>
+`;
+    }
     
     return `
 <!DOCTYPE html>
@@ -119,11 +294,11 @@ export default function ProteinViewerScreen({ route, navigation }) {
 </head>
 <body>
   <div id="container"></div>
-  <div class="loading" id="loading">Rendering 3D model...</div>
   
   <script>
     const MOLECULE_DATA = ${JSON.stringify(moleculeData.data)};
     const MOLECULE_FORMAT = ${JSON.stringify(moleculeData.format)};
+    const VIEW_MODE = ${JSON.stringify(viewerMode)}; // '3d' | '2d'
     
     function handleScriptError() {
       window.ReactNativeWebView && window.ReactNativeWebView.postMessage(JSON.stringify({
@@ -151,9 +326,10 @@ export default function ProteinViewerScreen({ route, navigation }) {
       logMessage('THREE.js loaded successfully');
     }
 
-    let scene, camera, renderer, controls;
-    let atoms = [];
-    let bonds = [];
+    let scene, camera, renderer;
+    let moleculeGroup;
+    let atomMeshes = [];
+    let bondObjects = [];
     let isDragging = false;
     let previousTouch = { x: 0, y: 0 };
     let rotationVelocity = { x: 0, y: 0 };
@@ -165,8 +341,23 @@ export default function ProteinViewerScreen({ route, navigation }) {
       scene = new THREE.Scene();
       scene.background = new THREE.Color(0x0f3460);
 
-      camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-      camera.position.z = 15;
+      const aspect = window.innerWidth / window.innerHeight;
+      if (VIEW_MODE === '2d') {
+        const frustumSize = 12;
+        camera = new THREE.OrthographicCamera(
+          (-frustumSize * aspect) / 2,
+          (frustumSize * aspect) / 2,
+          frustumSize / 2,
+          -frustumSize / 2,
+          0.1,
+          1000
+        );
+        camera.position.set(0, 0, 50);
+        camera.lookAt(0, 0, 0);
+      } else {
+        camera = new THREE.PerspectiveCamera(75, aspect, 0.1, 1000);
+        camera.position.z = 15;
+      }
 
       renderer = new THREE.WebGLRenderer({ antialias: true });
       renderer.setSize(window.innerWidth, window.innerHeight);
@@ -183,6 +374,9 @@ export default function ProteinViewerScreen({ route, navigation }) {
       const pointLight = new THREE.PointLight(0x00babc, 0.5);
       pointLight.position.set(-10, -10, 10);
       scene.add(pointLight);
+
+      moleculeGroup = new THREE.Group();
+      scene.add(moleculeGroup);
 
       // Load ligand data
       loadLigand();
@@ -221,11 +415,20 @@ export default function ProteinViewerScreen({ route, navigation }) {
           const deltaX = e.touches[0].clientX - previousTouch.x;
           const deltaY = e.touches[0].clientY - previousTouch.y;
 
-          rotationVelocity.x = deltaY * 0.01;
-          rotationVelocity.y = deltaX * 0.01;
+          if (VIEW_MODE === '2d') {
+            // Rotate the 3D ligand; orthographic camera turns it into a 2D projection.
+            rotationVelocity.x = deltaY * 0.01;
+            rotationVelocity.y = deltaX * 0.01;
 
-          scene.rotation.y += rotationVelocity.y;
-          scene.rotation.x += rotationVelocity.x;
+            moleculeGroup.rotation.y += rotationVelocity.y;
+            moleculeGroup.rotation.x += rotationVelocity.x;
+          } else {
+            rotationVelocity.x = deltaY * 0.01;
+            rotationVelocity.y = deltaX * 0.01;
+
+            scene.rotation.y += rotationVelocity.y;
+            scene.rotation.x += rotationVelocity.x;
+          }
 
           previousTouch = {
             x: e.touches[0].clientX,
@@ -237,8 +440,15 @@ export default function ProteinViewerScreen({ route, navigation }) {
             e.touches[0].clientY - e.touches[1].clientY
           );
           const delta = currentDistance - pinchDistance;
-          camera.position.z -= delta * 0.01;
-          camera.position.z = Math.max(5, Math.min(50, camera.position.z));
+
+          if (VIEW_MODE === '2d') {
+            camera.zoom += delta * 0.01;
+            camera.zoom = Math.max(0.5, Math.min(40, camera.zoom));
+            camera.updateProjectionMatrix();
+          } else {
+            camera.position.z -= delta * 0.01;
+            camera.position.z = Math.max(5, Math.min(50, camera.position.z));
+          }
           pinchDistance = currentDistance;
         }
       });
@@ -257,7 +467,7 @@ export default function ProteinViewerScreen({ route, navigation }) {
           const raycaster = new THREE.Raycaster();
           raycaster.setFromCamera({ x, y }, camera);
 
-          const intersects = raycaster.intersectObjects(atoms);
+          const intersects = raycaster.intersectObjects(atomMeshes);
           if (intersects.length > 0) {
             const atom = intersects[0].object;
             window.ReactNativeWebView.postMessage(JSON.stringify({
@@ -304,14 +514,12 @@ function loadLigand() {
       });
 
       createBondsByDistance(MOLECULE_DATA);
-      centerMolecule();
+      centerMolecule(MOLECULE_DATA);
     }
 
     else {
       throw new Error('Unknown format: ' + MOLECULE_FORMAT);
     }
-
-    document.getElementById('loading').style.display = 'none';
 
     window.ReactNativeWebView.postMessage(JSON.stringify({
       type: 'loaded'
@@ -349,7 +557,7 @@ function loadLigand() {
       createBond(atomPositions[0], atomPositions[1], 1);
       createBond(atomPositions[0], atomPositions[2], 1);
       
-      centerMolecule();
+      centerMolecule(atomPositions);
     }
 
     function parsePDB(pdbData) {
@@ -394,12 +602,12 @@ function loadLigand() {
       }
 
       // If no CONECT records, create bonds based on distance
-      if (bonds.length === 0) {
+      if (bondObjects.length === 0) {
         createBondsByDistance(atomPositions);
       }
 
       // Center the molecule
-      centerMolecule();
+      centerMolecule(atomPositions);
     }
 
     function createBondsByDistance(atomPositions) {
@@ -509,7 +717,7 @@ function loadLigand() {
         throw new Error('SDF parse error: no atoms parsed');
       }
 
-      centerMolecule();
+      centerMolecule(atomPositions);
     }
 
     function parseSDFV3000(lines) {
@@ -579,25 +787,38 @@ function loadLigand() {
         throw new Error('SDF parse error: no atoms parsed (V3000)');
       }
 
-      centerMolecule();
+      centerMolecule(atomPositions);
     }
 
     function createAtom(x, y, z, element) {
+      if (VIEW_MODE === '2d') {
+        // Skeletal view: hide implicit atoms
+        const el = String(element || '').toUpperCase();
+        if (el === 'H' || el === 'C') return;
+      }
+
       const color = CPK_COLORS[element] || '#FF1493'; // Default to hot pink
-      const geometry = new THREE.SphereGeometry(0.3, 32, 32);
+      const radius = VIEW_MODE === '2d' ? 0.18 : 0.3;
+      const geometry = new THREE.SphereGeometry(radius, 32, 32);
       const material = new THREE.MeshPhongMaterial({ 
         color: color,
         shininess: 100,
         specular: 0x555555
       });
       const sphere = new THREE.Mesh(geometry, material);
+      // Keep true 3D coordinates; orthographic camera handles the projection in 2D mode.
       sphere.position.set(x, y, z);
       sphere.userData = { element: element };
-      atoms.push(sphere);
-      scene.add(sphere);
+      atomMeshes.push(sphere);
+      moleculeGroup.add(sphere);
     }
 
     function createBond(atom1, atom2, bondType) {
+      if (VIEW_MODE === '2d') {
+        createBondLines2D(atom1, atom2, bondType);
+        return;
+      }
+
       const direction = new THREE.Vector3(
         atom2.x - atom1.x,
         atom2.y - atom1.y,
@@ -618,43 +839,130 @@ function loadLigand() {
       const axis = new THREE.Vector3(0, 1, 0);
       cylinder.quaternion.setFromUnitVectors(axis, direction.normalize());
 
-      bonds.push(cylinder);
-      scene.add(cylinder);
+      bondObjects.push(cylinder);
+      moleculeGroup.add(cylinder);
     }
 
-    function centerMolecule() {
-      if (atoms.length === 0) return;
+    function createBondLines2D(atom1, atom2, bondType) {
+      // In skeletal mode we omit explicit H bonds (if present).
+      const e1 = String(atom1?.element || '').toUpperCase();
+      const e2 = String(atom2?.element || '').toUpperCase();
+      if (e1 === 'H' || e2 === 'H') return;
+
+      const x1 = atom1.x, y1 = atom1.y;
+      const x2 = atom2.x, y2 = atom2.y;
+      const z1 = atom1.z || 0;
+      const z2 = atom2.z || 0;
+      const dx = x2 - x1;
+      const dy = y2 - y1;
+      const len = Math.hypot(dx, dy) || 1;
+      const nx = -dy / len;
+      const ny = dx / len;
+      const order = Math.max(1, Math.min(3, parseInt(bondType, 10) || 1));
+      const offset = 0.10;
+
+      const makeLine = (ox, oy) => {
+        const points = [
+          new THREE.Vector3(x1 + ox, y1 + oy, z1),
+          new THREE.Vector3(x2 + ox, y2 + oy, z2),
+        ];
+        const geometry = new THREE.BufferGeometry().setFromPoints(points);
+        const material = new THREE.LineBasicMaterial({ color: 0xE5E7EB });
+        const line = new THREE.Line(geometry, material);
+        bondObjects.push(line);
+        moleculeGroup.add(line);
+      };
+
+      if (order === 1) {
+        makeLine(0, 0);
+      } else if (order === 2) {
+        makeLine(nx * offset, ny * offset);
+        makeLine(-nx * offset, -ny * offset);
+      } else {
+        makeLine(0, 0);
+        makeLine(nx * offset * 1.25, ny * offset * 1.25);
+        makeLine(-nx * offset * 1.25, -ny * offset * 1.25);
+      }
+    }
+
+    function centerMolecule(atomPositions) {
+      const positions = Array.isArray(atomPositions) ? atomPositions : [];
+      if (positions.length === 0) return;
 
       const center = new THREE.Vector3();
-      atoms.forEach(atom => {
-        center.add(atom.position);
-      });
-      center.divideScalar(atoms.length);
+      for (let i = 0; i < positions.length; i++) {
+        center.x += positions[i].x;
+        center.y += positions[i].y;
+        center.z += positions[i].z;
+      }
+      center.divideScalar(positions.length);
 
-      atoms.forEach(atom => {
-        atom.position.sub(center);
-      });
-      bonds.forEach(bond => {
-        bond.position.sub(center);
-      });
+      moleculeGroup.position.set(-center.x, -center.y, -center.z);
+
+      if (VIEW_MODE === '2d') {
+        fitCamera2D(positions, center);
+      }
+    }
+
+    function fitCamera2D(atomPositions, center) {
+      const positions = Array.isArray(atomPositions) ? atomPositions : [];
+      if (positions.length === 0) return;
+
+      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+      for (let i = 0; i < positions.length; i++) {
+        const x = positions[i].x - center.x;
+        const y = positions[i].y - center.y;
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+      }
+
+      const width = Math.max(1e-6, maxX - minX);
+      const height = Math.max(1e-6, maxY - minY);
+
+      // Set zoom so molecule fits in viewport.
+      const aspect = window.innerWidth / window.innerHeight;
+      const frustumWidth = camera.right - camera.left;
+      const frustumHeight = camera.top - camera.bottom;
+
+      const zoomX = (frustumWidth / width) * 0.85;
+      const zoomY = (frustumHeight / height) * 0.85;
+      camera.zoom = Math.max(0.5, Math.min(40, Math.min(zoomX, zoomY)));
+      camera.updateProjectionMatrix();
     }
 
     function onWindowResize() {
-      camera.aspect = window.innerWidth / window.innerHeight;
-      camera.updateProjectionMatrix();
+      const aspect = window.innerWidth / window.innerHeight;
+      if (VIEW_MODE === '2d') {
+        const frustumHeight = camera.top - camera.bottom;
+        const frustumWidth = frustumHeight * aspect;
+        const centerX = (camera.left + camera.right) / 2;
+        camera.left = centerX - frustumWidth / 2;
+        camera.right = centerX + frustumWidth / 2;
+        camera.updateProjectionMatrix();
+      } else {
+        camera.aspect = aspect;
+        camera.updateProjectionMatrix();
+      }
       renderer.setSize(window.innerWidth, window.innerHeight);
     }
 
     function animate() {
       requestAnimationFrame(animate);
 
-      // Apply rotation decay
+      // Apply rotation decay (used by both modes)
       rotationVelocity.x *= 0.95;
       rotationVelocity.y *= 0.95;
 
       if (!isDragging && (Math.abs(rotationVelocity.x) > 0.001 || Math.abs(rotationVelocity.y) > 0.001)) {
-        scene.rotation.y += rotationVelocity.y;
-        scene.rotation.x += rotationVelocity.x;
+        if (VIEW_MODE === '2d') {
+          moleculeGroup.rotation.y += rotationVelocity.y;
+          moleculeGroup.rotation.x += rotationVelocity.x;
+        } else {
+          scene.rotation.y += rotationVelocity.y;
+          scene.rotation.x += rotationVelocity.x;
+        }
       }
 
       renderer.render(scene, camera);
@@ -669,7 +977,7 @@ function loadLigand() {
 
   const htmlContent = useMemo(() => {
     return moleculeData ? getHtmlContent() : '';
-  }, [moleculeData, structureId]);
+  }, [moleculeData, structureId, viewerMode]);
 
   const handleWebViewMessage = (event) => {
     try {
@@ -706,7 +1014,7 @@ function loadLigand() {
       }
 
       const payload = {
-        message: `Check out this 3D molecular structure of ${structureId}!`,
+        message: `Check out this molecular structure of ${structureId}!`,
         title: `Structure ${structureId}`,
       };
       if (screenshotUri) payload.url = screenshotUri;
@@ -777,6 +1085,20 @@ function loadLigand() {
                 <MaterialIcons name={favorite ? 'favorite' : 'favorite-border'} size={24} color="#fff" />
               </TouchableOpacity>
             )}
+            <TouchableOpacity
+                onPress={() => {
+                  setShowTooltip(false);
+                  setSelectedAtom(null);
+                  setError(false);
+                  setLoading(true);
+                  setViewerMode((m) => (m === '3d' ? '2d' : '3d'));
+                }}
+              style={[styles.actionButton, styles.actionButtonRight]}
+              accessibilityRole="button"
+              accessibilityLabel={viewerMode === '3d' ? 'Switch to 2D Lewis structure view' : 'Switch to 3D view'}
+            >
+              <Text style={styles.modeButtonText}>{viewerMode === '3d' ? '2D' : '3D'}</Text>
+            </TouchableOpacity>
             <TouchableOpacity onPress={handleShare} style={[styles.actionButton, styles.actionButtonRight]}>
               <MaterialIcons name="share" size={24} color="#fff" />
             </TouchableOpacity>
@@ -791,7 +1113,7 @@ function loadLigand() {
               options={{ format: 'png', quality: 0.9, result: 'tmpfile' }}
             >
               <WebView
-                key={`webview-${structureId}`}
+                key={`webview-${structureId}-${viewerMode}`}
                 source={{ html: htmlContent }}
                 style={styles.webview}
                 onMessage={handleWebViewMessage}
@@ -824,13 +1146,15 @@ function loadLigand() {
         {loading && (
           <View style={styles.loadingOverlay}>
             <ActivityIndicator size="large" color="#00babc" />
-            <Text style={styles.loadingText}>Loading 3D model...</Text>
+            <Text style={styles.loadingText}>{viewerMode === '2d' ? 'Loading 2D view...' : 'Loading 3D model...'}</Text>
           </View>
         )}
 
         <View style={styles.controls}>
           <Text style={styles.controlsText}>
-            👆 Drag to rotate • 🤏 Pinch to zoom
+            {viewerMode === '2d'
+              ? 'Lewis structure (2D)'
+              : '👆 Drag to rotate • 🤏 Pinch to zoom'}
           </Text>
         </View>
 
@@ -910,6 +1234,12 @@ const styles = StyleSheet.create({
   },
   actionButtonRight: {
     marginLeft: 8,
+  },
+  modeButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '800',
+    paddingHorizontal: 2,
   },
   webviewContainer: {
     flex: 1,

@@ -11,7 +11,7 @@ Expo + React Native app that lets users browse ligands, view them in 3D (balls &
 ### Features
 
 - Local accounts (register/login) + biometric login
-- Re-authentication when returning from background -> which is different from returning from inative state.
+- Re-authentication when returning from background (different from returning from inactive state)
 - Ligand list (from `ligands.txt`) + search
 - 3D ligand viewer (rotate/zoom) + atom tooltip
 - Favorites per user (restricted to ligands from the provided list)
@@ -34,13 +34,37 @@ Expo + React Native app that lets users browse ligands, view them in 3D (balls &
 - Ligand coordinates (SDF): `https://files.rcsb.org/ligands/download/<ID>_ideal.sdf`
 - Protein structures (PDB): `https://files.rcsb.org/download/<PDB>.pdb`
 
-A correct parsing of the SDF file is :
-- The `ATOM` lines in the SDF file represent the atoms in the ligand, with their coordinates and element types.
-- The `CONECT` lines represent the bonds between the atoms, specifying which atoms are connected to each other.
+### How an SDF is read (what the app parses)
 
-Example of an `ATOM` line:
-```ATOM      1  C   LIG     1      12.011  0.000  0.000  0.00  0.00           C``
-This line indicates that there is a carbon atom (C) with an atomic number of 6, located at coordinates (12.011, 0.000, 0.000). The `CONECT` lines would then specify how this carbon atom is bonded to other atoms in the ligand.
+An SDF (Structure-Data File) is a text format that contains one or more **molfile** records.
+In this project we use the **molfile part** (atoms + bonds) to render the ligand in 3D.
+
+For a single molecule record:
+
+1) **Header** (3 lines)
+- Name / generator / comment.
+
+2) **Counts line**
+- Most RCSB ligand files are **V2000**.
+- In V2000 the atom/bond counts are **fixed-width** fields:
+	- `substring(0, 3)` → number of atoms
+	- `substring(3, 6)` → number of bonds
+- This matters because some files look like `126133 ... V2000`, which means **126 atoms + 133 bonds**.
+
+3) **Atom block** (`atomCount` lines)
+- Each line contains at least: `x  y  z  element ...`
+- We parse the first three floats as coordinates and the 4th token as the element symbol.
+
+4) **Bond block** (`bondCount` lines)
+- Each line contains: `a1  a2  bondType ...` (atom indices are **1-based**)
+
+5) End markers / properties
+- `M  END` ends the molfile.
+- Optional properties may follow (`>  <TAG>` blocks).
+- `$$$$` ends the record.
+
+Some ligands can be **V3000**, which uses `M  V30 BEGIN ATOM/BOND` sections instead of the V2000 fixed-width blocks.
+If parsing fails, the viewer will surface an error message to the user.
 
 
 ### What is a pdb file?
