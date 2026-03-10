@@ -14,8 +14,13 @@ Expo + React Native app that lets users browse ligands, view them in 3D (balls &
 - Re-authentication when returning from background (different from returning from inactive state)
 - Ligand list (from `ligands.txt`) + search
 - 3D ligand viewer (rotate/zoom) + atom tooltip
+- 2D ligand viewer (Lewis-style diagram) toggle from the viewer
 - Favorites per user (restricted to ligands from the provided list)
 - Share from viewer (includes a screenshot preview of the 3D area when available)
+
+## Documentation
+
+- 3D viewer MWE (download SDF → build scene): [docs/3d-viewer-mwe.md](docs/3d-viewer-mwe.md)
 
 ## Mandatory Requirements Checklist (mapping)
 
@@ -25,7 +30,7 @@ Expo + React Native app that lets users browse ligands, view them in 3D (balls &
 - Biometrics: `src/services/authService.js` (uses `expo-local-authentication`)
 - “Login always shown on relaunch”: `src/context/AuthContext.js` (AppState-based gating)
 - Ligand list + search: `src/screens/ProteinListScreen.js`, `src/data/ligands.js`
-- 3D ligand view + interactions: `src/screens/ProteinViewerScreen.js`
+- Ligand viewer (3D + 2D Lewis) + interactions: `src/screens/ProteinViewerScreen.js`
 - Share: `src/screens/ProteinViewerScreen.js`
 - Loading & errors: `src/screens/ProteinViewerScreen.js`
 

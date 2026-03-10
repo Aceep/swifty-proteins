@@ -19,4 +19,4 @@ From the repo root:
 
 ## More documentation
 
-See `proteins/README.md` for app-specific details (requirements mapping, screens, and implementation notes).
+See `proteins/README.md` for app-specific details (requirements mapping, screens, and implementation notes), including how to use the ligand **3D viewer** and the **2D Lewis view** toggle.
