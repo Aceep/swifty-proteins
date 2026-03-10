@@ -1,130 +1,76 @@
-# Welcome to your Expo app 👋
+
 
 ## Swifty Proteins — Mandatory Requirements Checklist
 
 This section maps each **mandatory** requirement to the place it is implemented in the codebase.
 
-### App icon
+## Swifty Proteins
 
-- Configured in `app.json` via `expo.icon`
-- Assets in `assets/images/`:
-   - `icon.png`
-   - Android adaptive icons: `android-icon-foreground.png`, `android-icon-background.png`, `android-icon-monochrome.png`
+Expo + React Native app that lets users browse ligands, view them in 3D (balls & sticks + CPK coloring), authenticate with password/biometrics, favorite eligible ligands per user, and share a preview of the 3D view.
 
-### Launch screen
+### Features
 
-- Native splash configured in `app.json` (`expo.splash` + `expo-splash-screen` plugin)
-- Custom launch screen shown for ~3 seconds in `App.js`
-   - Custom screen: `src/screens/SplashScreen.js`
+- Local accounts (register/login) + biometric login
+- Re-authentication when returning from background -> which is different from returning from inative state.
+- Ligand list (from `ligands.txt`) + search
+- 3D ligand viewer (rotate/zoom) + atom tooltip
+- Favorites per user (restricted to ligands from the provided list)
+- Share from viewer (includes a screenshot preview of the 3D area when available)
 
-### Login view / authentication
+## Mandatory Requirements Checklist (mapping)
 
-- **Always show login when app returns to foreground**: `src/context/AuthContext.js` (AppState-based re-auth)
-- Account storage & management (local): `src/services/authService.js`
-   - Multiple accounts stored locally (SecureStore on native, AsyncStorage on web)
-- Create account: `src/screens/RegisterScreen.js`
-- Login with password fallback: `src/screens/LoginScreen.js`
-- Biometric login (TouchID/FaceID on iOS, BiometricManager on Android via Expo):
-   - `src/services/authService.js` uses `expo-local-authentication`
-   - UI entrypoint: `src/screens/LoginScreen.js`
-- Failed login warning popup: `Alert.alert(...)` in `src/screens/LoginScreen.js`
+- App icon: `app.json` + `assets/images/` (icon + Android adaptive icons)
+- Launch screen: `app.json` splash + `src/screens/SplashScreen.js`
+- Login view + account creation: `src/screens/LoginScreen.js`, `src/screens/RegisterScreen.js`
+- Biometrics: `src/services/authService.js` (uses `expo-local-authentication`)
+- “Login always shown on relaunch”: `src/context/AuthContext.js` (AppState-based gating)
+- Ligand list + search: `src/screens/ProteinListScreen.js`, `src/data/ligands.js`
+- 3D ligand view + interactions: `src/screens/ProteinViewerScreen.js`
+- Share: `src/screens/ProteinViewerScreen.js`
+- Loading & errors: `src/screens/ProteinViewerScreen.js`
 
-### Protein (Ligand) list view
+## Data Sources
 
-- Lists all ligands from resources:
-   - Source list: `src/data/ligands.js`
-   - Original file: `ligands.txt`
-- Search within list: `src/screens/ProteinListScreen.js`
+- Ligand coordinates (SDF): `https://files.rcsb.org/ligands/download/<ID>_ideal.sdf`
+- Protein structures (PDB): `https://files.rcsb.org/download/<PDB>.pdb`
 
-### Protein view (3D ligand)
 
-- 3D ligand display (interactive): `src/screens/ProteinViewerScreen.js`
-   - Zoom: pinch
-   - Rotate: drag
-- CPK coloring: `cpkColors` mapping in `src/screens/ProteinViewerScreen.js`
-- Balls & sticks model:
-   - atoms rendered as spheres
-   - bonds rendered as cylinders
-- Atom tooltip popup on tap + dismiss on background tap:
-   - WebView posts `atomClicked` / `backgroundClicked`
-   - RN modal tooltip in `src/screens/ProteinViewerScreen.js`
-- Share button: `Share.share(...)` in `src/screens/ProteinViewerScreen.js`
+### What is a pdb file?
+A PDB (Protein Data Bank) file is a standard format for representing three-dimensional structures of molecules
+such as proteins, nucleic acids, and small molecules. It contains information about the atomic coordinates, connectivity, 
+and other properties of the molecule, allowing researchers to visualize and analyze its structure.
 
-### Loading & error handling
 
-- Loading animation (spinner overlay): `src/screens/ProteinViewerScreen.js`
-- Warning popup if ligand cannot be loaded from the website:
-   - fetch failure: `Alert.alert('Warning', ...)` in `src/screens/ProteinViewerScreen.js`
-   - WebView load/parse errors also surface as alerts
+## Run the app
 
-## Stack & Tool Choices (and why)
-
-### App framework
-
-- **Expo + React Native**
-   - Why: fast cross-platform iteration (iOS/Android), good DX, and built-in access to device capabilities (biometrics, secure storage) via Expo modules.
-
-### Navigation
-
-- **React Navigation (native stack)**
-   - Why: simple, stable navigation for an authentication gate + list → viewer flow.
-   - Where: `src/navigation/AppNavigator.js`
-
-### Authentication & user account storage
-
-- **Local accounts stored on-device**
-   - Why: project requirement is user account creation/login; local storage keeps the project self-contained with no backend dependency.
-   - Implementation:
-      - `expo-secure-store` on native (secure at-rest storage)
-      - `@react-native-async-storage/async-storage` as a web fallback
-   - Where: `src/services/authService.js`
-
-### Biometrics
-
-- **expo-local-authentication** (TouchID/FaceID on iOS, BiometricManager-backed on Android)
-   - Why: meets the “fingerprint/biometric” requirement with a unified API across platforms.
-   - Where: `src/services/authService.js`, `src/screens/LoginScreen.js`
-
-### “Login always shown on relaunch” behavior
-
-- **AppState re-auth gating**
-   - Why: ensures that returning from background requires authentication again, per the subject.
-   - Where: `src/context/AuthContext.js`, `src/screens/AuthScreen.js`
-
-### Data fetching
-
-- **Axios**
-   - Why: simple HTTP client with good error handling.
-   - Where: `src/api/api.js`
-
-- **RCSB endpoints used**
-   - Ligands: `https://files.rcsb.org/ligands/download/<ID>_ideal.sdf` (provides 3D coordinates)
-   - PDB: `https://files.rcsb.org/download/<PDB>.pdb` (text PDB for parsing)
-   - Why: these formats contain coordinates suitable for rendering.
-
-### 3D rendering
-
-- **react-native-webview + Three.js**
-   - Why: lightweight 3D rendering inside a classic app without a full game engine; supports rotation/zoom interactions and custom rendering.
-   - Rendering model:
-      - balls (atoms) as spheres
-      - sticks (bonds) as cylinders
-      - CPK coloring mapping per element
-   - Where: `src/screens/ProteinViewerScreen.js` (HTML/JS injected into WebView)
-
-### UI & styling
-
-- **expo-linear-gradient + StyleSheet**
-   - Why: consistent “molecular / science” theme with minimal dependencies.
-   - Where: most screens under `src/screens/`
-
-### Share
-
-- **React Native Share API**
-   - Why: meets the “Share” requirement using the platform-native share sheet.
-   - Where: `src/screens/ProteinViewerScreen.js`
-
-## Get started
+From the repo root:
 
 ```bash
 ./start.sh
+```
+will build the docker without cache and start the container, then install JS dependencies and start Expo in tunnel mode to make it accecsible on the local network.
+
+### Connect on phone ?
+
+1. Ensure to install the Expo Go app on your phone (available on iOS and Android).
+2. Scan the QR code printed in the terminal after running `./start.sh` with your phone’s camera or Expo Go’s built-in scanner.
+
+## Stack (high level)
+
+- Expo SDK + React Native
+-> SDK is used for biometrics, secure storage, and other native features such as app state monitoring (eg state from background/inactive/active)
+-> How does it work ? Expo SDK provides a set of tools and services built on top of React Native that simplify the development process and give us access to native device features without needing to write native code. For example, we use `expo-local-authentication` for biometrics, which abstracts away the platform-specific implementations and provides a unified API for both iOS and Android.
+- React Navigation (native stack)
+-> For screen navigation (login, list, viewer)
+-> How does it work ? React Navigation is a popular library for handling navigation in React Native apps. We use the native stack navigator, which provides a platform-specific look and feel for navigation (like a stack of screens). It allows us to easily define our app’s navigation structure and handle transitions between screens.
+- `react-native-webview` + Three.js for 3D rendering
+-> Native WebView allows us to use Three.js for 3D rendering without needing a complex native module setup, and it’s performant enough for our use case (simple molecules)
+-> How does it work ? We embed a WebView in our React Native app, which loads a local HTML/JS bundle that initializes a Three.js scene. We then communicate between the React Native code and the WebView using the messaging system to send ligand data and user interactions back and forth.
+- Axios for HTTP
+-> For fetching ligand/protein data from RCSB.
+-> How does it work ? Axios is a promise-based HTTP client that allows us to make requests to external APIs (like RCSB) to fetch ligand and protein data. It provides an easy-to-use API for sending GET requests and handling responses, including error handling.
+- SecureStore / AsyncStorage for local account persistence
+-> SecureStore is used for storing sensitive data like authentication tokens, while AsyncStorage is used for less sensitive data like user preferences.
+- `react-native-view-shot` for sharing a screenshot preview
+-> Allows us to capture a screenshot of the 3D viewer area to include in the share content.
+-> How does it work ? `react-native-view-shot` provides a simple API for capturing screenshots of React Native components. We use it to take a picture of the 3D viewer area and include it in the share content.
