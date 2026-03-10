@@ -34,6 +34,14 @@ Expo + React Native app that lets users browse ligands, view them in 3D (balls &
 - Ligand coordinates (SDF): `https://files.rcsb.org/ligands/download/<ID>_ideal.sdf`
 - Protein structures (PDB): `https://files.rcsb.org/download/<PDB>.pdb`
 
+A correct parsing of the SDF file is :
+- The `ATOM` lines in the SDF file represent the atoms in the ligand, with their coordinates and element types.
+- The `CONECT` lines represent the bonds between the atoms, specifying which atoms are connected to each other.
+
+Example of an `ATOM` line:
+```ATOM      1  C   LIG     1      12.011  0.000  0.000  0.00  0.00           C``
+This line indicates that there is a carbon atom (C) with an atomic number of 6, located at coordinates (12.011, 0.000, 0.000). The `CONECT` lines would then specify how this carbon atom is bonded to other atoms in the ligand.
+
 
 ### What is a pdb file?
 A PDB (Protein Data Bank) file is a standard format for representing three-dimensional structures of molecules

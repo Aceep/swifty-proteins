@@ -420,55 +420,165 @@ function loadLigand() {
     }
 
     function parseSDF(sdfData) {
-      const lines = sdfData.split('\\n');
-      let atomCount = 0;
-      let bondCount = 0;
-      let atomStart = 0;
+      const lines = String(sdfData || '').split(/\\r?\\n/);
+      if (lines.length < 4) {
+        throw new Error('SDF parse error: file too short');
+      }
 
-      // Find counts line (usually line 3)
-      for (let i = 0; i < Math.min(10, lines.length); i++) {
-        const match = lines[i].match(/^\\s*(\\d+)\\s+(\\d+)/);
-        if (match) {
-          atomCount = parseInt(match[1]);
-          bondCount = parseInt(match[2]);
-          atomStart = i + 1;
+      const isV3000 = lines.some((l) => (l || '').includes('V3000')) || lines.some((l) => (l || '').trim().startsWith('M  V30'));
+      if (isV3000) {
+        return parseSDFV3000(lines);
+      }
+      return parseSDFV2000(lines);
+    }
+
+    function parseSDFV2000(lines) {
+      let countsIndex = -1;
+      for (let i = 0; i < Math.min(20, lines.length); i++) {
+        if ((lines[i] || '').includes('V2000')) {
+          countsIndex = i;
           break;
         }
       }
-
-      // Parse atoms
-      const atomPositions = [];
-      for (let i = 0; i < atomCount && (atomStart + i) < lines.length; i++) {
-        const line = lines[atomStart + i];
-        const parts = line.trim().split(/\\s+/);
-        if (parts.length >= 4) {
-          const x = parseFloat(parts[0]);
-          const y = parseFloat(parts[1]);
-          const z = parseFloat(parts[2]);
-          const element = parts[3].toUpperCase();
-
-          atomPositions.push({ x, y, z, element });
-          createAtom(x, y, z, element);
-        }
+      if (countsIndex === -1) {
+        // Fallback: common molfile layout has counts at line 4
+        countsIndex = 3;
       }
 
-      // Parse bonds
+      const countsLine = lines[countsIndex] || '';
+      // V2000 counts are fixed width: first 3 chars = atoms, next 3 = bonds.
+      // This correctly handles cases like "126133" (126 atoms, 133 bonds).
+      const atomCount = parseInt(countsLine.substring(0, 3).trim(), 10);
+      const bondCount = parseInt(countsLine.substring(3, 6).trim(), 10);
+      if (!Number.isFinite(atomCount) || atomCount <= 0) {
+        throw new Error('SDF parse error: invalid atom count');
+      }
+      if (!Number.isFinite(bondCount) || bondCount < 0) {
+        throw new Error('SDF parse error: invalid bond count');
+      }
+
+      const atomStart = countsIndex + 1;
       const bondStart = atomStart + atomCount;
-      for (let i = 0; i < bondCount && (bondStart + i) < lines.length; i++) {
-        const line = lines[bondStart + i];
-        const parts = line.trim().split(/\\s+/);
-        if (parts.length >= 3) {
-          const atom1 = parseInt(parts[0]) - 1;
-          const atom2 = parseInt(parts[1]) - 1;
-          const bondType = parseInt(parts[2]);
+      if (atomStart >= lines.length) {
+        throw new Error('SDF parse error: missing atom block');
+      }
+      if (bondStart > lines.length) {
+        throw new Error('SDF parse error: truncated file (atom block)');
+      }
 
-          if (atom1 < atomPositions.length && atom2 < atomPositions.length) {
-            createBond(atomPositions[atom1], atomPositions[atom2], bondType);
+      const atomPositions = [];
+      for (let i = 0; i < atomCount; i++) {
+        const line = lines[atomStart + i] || '';
+        const parts = line.trim().split(/\\s+/);
+        if (parts.length < 4) {
+          throw new Error('SDF parse error: malformed atom line');
+        }
+
+        const x = parseFloat(parts[0]);
+        const y = parseFloat(parts[1]);
+        const z = parseFloat(parts[2]);
+        const element = String(parts[3] || '').replace(/\\r/g, '').toUpperCase();
+
+        if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) {
+          throw new Error('SDF parse error: invalid atom coordinates');
+        }
+        if (!element) {
+          throw new Error('SDF parse error: missing atom element');
+        }
+
+        const atom = { x, y, z, element };
+        atomPositions.push(atom);
+        createAtom(x, y, z, element);
+      }
+
+      for (let i = 0; i < bondCount; i++) {
+        const line = lines[bondStart + i] || '';
+        const parts = line.trim().split(/\\s+/);
+        if (parts.length < 3) continue;
+        const atom1 = parseInt(parts[0], 10) - 1;
+        const atom2 = parseInt(parts[1], 10) - 1;
+        const bondType = parseInt(parts[2], 10);
+        if (!Number.isFinite(atom1) || !Number.isFinite(atom2)) continue;
+        if (atom1 < 0 || atom2 < 0 || atom1 >= atomPositions.length || atom2 >= atomPositions.length) {
+          continue;
+        }
+        createBond(atomPositions[atom1], atomPositions[atom2], Number.isFinite(bondType) ? bondType : 1);
+      }
+
+      if (atomPositions.length === 0) {
+        throw new Error('SDF parse error: no atoms parsed');
+      }
+
+      centerMolecule();
+    }
+
+    function parseSDFV3000(lines) {
+      // Minimal V3000 support for ligands that ship as V3000.
+      const atomPositions = [];
+      const atomIndexToArrayIndex = {};
+      let inAtom = false;
+      let inBond = false;
+      const bondLines = [];
+
+      for (let i = 0; i < lines.length; i++) {
+        const line = (lines[i] || '').trim();
+        if (!line) continue;
+
+        if (line.startsWith('M  V30 BEGIN ATOM')) {
+          inAtom = true;
+          continue;
+        }
+        if (line.startsWith('M  V30 END ATOM')) {
+          inAtom = false;
+          continue;
+        }
+        if (line.startsWith('M  V30 BEGIN BOND')) {
+          inBond = true;
+          continue;
+        }
+        if (line.startsWith('M  V30 END BOND')) {
+          inBond = false;
+          continue;
+        }
+
+        if (inAtom && line.startsWith('M  V30')) {
+          // Format: M  V30 <idx> <type> <x> <y> <z> ...
+          const parts = line.split(/\\s+/);
+          const idx = parseInt(parts[2], 10);
+          const element = String(parts[3] || '').toUpperCase();
+          const x = parseFloat(parts[4]);
+          const y = parseFloat(parts[5]);
+          const z = parseFloat(parts[6]);
+          if (Number.isFinite(idx) && Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(z) && element) {
+            const atom = { x, y, z, element };
+            atomIndexToArrayIndex[idx] = atomPositions.length;
+            atomPositions.push(atom);
+            createAtom(x, y, z, element);
           }
+          continue;
+        }
+
+        if (inBond && line.startsWith('M  V30')) {
+          bondLines.push(line);
         }
       }
 
-      // Center the molecule
+      for (let i = 0; i < bondLines.length; i++) {
+        const parts = bondLines[i].split(/\\s+/);
+        const bondType = parseInt(parts[3], 10);
+        const a1 = parseInt(parts[4], 10);
+        const a2 = parseInt(parts[5], 10);
+        const idx1 = atomIndexToArrayIndex[a1];
+        const idx2 = atomIndexToArrayIndex[a2];
+        if (idx1 != null && idx2 != null) {
+          createBond(atomPositions[idx1], atomPositions[idx2], Number.isFinite(bondType) ? bondType : 1);
+        }
+      }
+
+      if (atomPositions.length === 0) {
+        throw new Error('SDF parse error: no atoms parsed (V3000)');
+      }
+
       centerMolecule();
     }
 

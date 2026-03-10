@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  AppState,
   View,
   Text,
   TextInput,
@@ -30,7 +29,6 @@ export default function LoginScreen({
   const [biometricSupported, setBiometricSupported] = useState(false);
   const [biometricEnabled, setBiometricEnabled] = useState(false);
   const lastAutoBioToken = useRef(0);
-  const appStateRef = useRef(AppState.currentState);
 
   const isReconnect = variant === 'reconnect';
   const title = useMemo(() => (isReconnect ? 'Welcome back' : 'Welcome'), [isReconnect]);
@@ -39,14 +37,6 @@ export default function LoginScreen({
     [isReconnect]
   );
   const primaryButtonLabel = useMemo(() => (isReconnect ? 'Reconnect' : 'Login'), [isReconnect]);
-
-  const refreshBiometricState = async () => {
-    const supported = await AuthService.isBiometricSupported();
-    const enabled = await AuthService.isBiometricEnabled();
-    setBiometricSupported(!!supported);
-    setBiometricEnabled(!!enabled);
-    return { supported: !!supported, enabled: !!enabled };
-  };
 
   useEffect(() => {
     let cancelled = false;
@@ -68,39 +58,16 @@ export default function LoginScreen({
   }, []);
 
   useEffect(() => {
-    // When the app returns to the foreground, re-check biometrics.
-    // iOS can temporarily report different availability (lockouts, enrollment changes, etc.).
-    const subscription = AppState.addEventListener('change', (nextState) => {
-      const prevState = appStateRef.current;
-      appStateRef.current = nextState;
-
-      if ((prevState === 'background' || prevState === 'inactive') && nextState === 'active') {
-        // Small delay avoids occasional race with system UI resuming.
-        setTimeout(() => {
-          refreshBiometricState();
-        }, 250);
-      }
-    });
-
-    return () => {
-      subscription.remove();
-    };
-  }, []);
-
-  useEffect(() => {
     // Trigger biometric automatically when instructed (typically on app return)
     if (!isReconnect) return;
     if (!autoBiometricToken) return;
     if (autoBiometricToken === lastAutoBioToken.current) return;
     lastAutoBioToken.current = autoBiometricToken;
 
-    (async () => {
-      const { supported, enabled } = await refreshBiometricState();
-      if (supported && enabled) {
-        handleBiometricAuth(true);
-      }
-    })();
-  }, [autoBiometricToken, isReconnect]);
+    if (biometricSupported && biometricEnabled) {
+      handleBiometricAuth(true);
+    }
+  }, [autoBiometricToken, biometricSupported, biometricEnabled, isReconnect]);
 
   const handleLogin = async () => {
     if (!username.trim() || !password.trim()) {
