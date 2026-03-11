@@ -290,7 +290,7 @@ export default function ProteinViewerScreen({ route, navigation }) {
       font-family: Arial, sans-serif;
     }
   </style>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js" onerror="handleScriptError()"></script>
+  <script src="https://unpkg.com/three@0.128.0/build/three.min.js" onerror="handleScriptError()"></script>
 </head>
 <body>
   <div id="container"></div>
@@ -326,6 +326,24 @@ export default function ProteinViewerScreen({ route, navigation }) {
       logMessage('THREE.js loaded successfully');
     }
 
+    function getWebGLContext() {
+      try {
+        const canvas = document.createElement('canvas');
+        return canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+      } catch (e) {
+        return null;
+      }
+    }
+
+    function assertWebGLAvailable() {
+      const gl = getWebGLContext();
+      if (!gl) {
+        throw new Error(
+          'WebGL is not available in this WebView. On Android this usually means hardware acceleration/GPU is unavailable (common on emulators) or Android System WebView is outdated.'
+        );
+      }
+    }
+
     let scene, camera, renderer;
     let moleculeGroup;
     let atomMeshes = [];
@@ -338,6 +356,7 @@ export default function ProteinViewerScreen({ route, navigation }) {
     const CPK_COLORS = ${JSON.stringify(cpkColors)};
 
     function init() {
+      assertWebGLAvailable();
       scene = new THREE.Scene();
       scene.background = new THREE.Color(0x0f3460);
 
@@ -359,7 +378,17 @@ export default function ProteinViewerScreen({ route, navigation }) {
         camera.position.z = 15;
       }
 
-      renderer = new THREE.WebGLRenderer({ antialias: true });
+      try {
+        renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+      } catch (e) {
+        // Some Android WebViews fail to create an AA context; retry without antialiasing.
+        renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
+      }
+      try {
+        renderer.setPixelRatio(window.devicePixelRatio || 1);
+      } catch (e) {
+        // ignore
+      }
       renderer.setSize(window.innerWidth, window.innerHeight);
       document.getElementById('container').appendChild(renderer.domElement);
 
@@ -968,7 +997,14 @@ function loadLigand() {
       renderer.render(scene, camera);
     }
 
-    init();
+    try {
+      init();
+    } catch (err) {
+      const message = String(err && err.message ? err.message : err);
+      window.ReactNativeWebView && window.ReactNativeWebView.postMessage(
+        JSON.stringify({ type: 'error', message: message })
+      );
+    }
   </script>
 </body>
 </html>
@@ -1137,7 +1173,12 @@ function loadLigand() {
                 mixedContentMode="always"
                 originWhitelist={['*']}
                 startInLoadingState={false}
-                {...(Platform.OS === 'android' ? { androidLayerType: 'software' } : {})}
+                {...(Platform.OS === 'android'
+                  ? {
+                      androidLayerType: 'hardware',
+                      androidHardwareAccelerationDisabled: false,
+                    }
+                  : {})}
               />
             </ViewShot>
           </View>
