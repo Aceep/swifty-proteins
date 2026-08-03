@@ -1,6 +1,6 @@
 import React, { useRef, useState, useEffect, useMemo } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert, ActivityIndicator, Modal, Share, SafeAreaView, Platform } from 'react-native';
-import { WebView } from 'react-native-webview';
+import { View, Text, StyleSheet, TouchableOpacity, Alert, ActivityIndicator, Modal, Share, SafeAreaView } from 'react-native';
+import MoleculeCanvas from '../components/MoleculeCanvas';
 import ViewShot from 'react-native-view-shot';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -1148,37 +1148,24 @@ function loadLigand() {
               style={styles.webviewShot}
               options={{ format: 'png', quality: 0.9, result: 'tmpfile' }}
             >
-              <WebView
+              <MoleculeCanvas
                 key={`webview-${structureId}-${viewerMode}`}
-                source={{ html: htmlContent }}
+                html={htmlContent}
                 style={styles.webview}
                 onMessage={handleWebViewMessage}
                 onError={(syntheticEvent) => {
-                  const { nativeEvent } = syntheticEvent;
-                  console.error('WebView error:', nativeEvent);
+                  const nativeEvent = syntheticEvent?.nativeEvent;
+                  console.error('Viewer error:', nativeEvent || syntheticEvent);
                   setError(true);
                   setLoading(false);
                 }}
                 onHttpError={(syntheticEvent) => {
                   const { nativeEvent } = syntheticEvent;
-                  console.error('WebView HTTP error:', nativeEvent);
+                  console.error('Viewer HTTP error:', nativeEvent);
                 }}
                 onLoad={() => {
-                  console.log('WebView loaded successfully for structure:', structureId);
+                  console.log('Viewer loaded successfully for structure:', structureId);
                 }}
-                javaScriptEnabled={true}
-                domStorageEnabled={true}
-                allowFileAccess={true}
-                allowUniversalAccessFromFileURLs={true}
-                mixedContentMode="always"
-                originWhitelist={['*']}
-                startInLoadingState={false}
-                {...(Platform.OS === 'android'
-                  ? {
-                      androidLayerType: 'hardware',
-                      androidHardwareAccelerationDisabled: false,
-                    }
-                  : {})}
               />
             </ViewShot>
           </View>
