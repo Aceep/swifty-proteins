@@ -1,0 +1,7 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "cd proteins && npm ci && npx expo export --platform web",
+  "outputDirectory": "proteins/dist",
+  "installCommand": "echo 'install handled by buildCommand'",
+  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
+}
